@@ -37,13 +37,15 @@ Forward packets out of a physical or virtual port. Physical ports are referenced
 
 To send a flow mod you must define a match structure (discussed above) and set some flow mod specific parameters as shown here:
 
-`msg = ofp_flow_mod()`
-`msg.match = match`
-`msg.idle_timeout = idle_timeout`
-`msg.hard_timeout = hard_timeout`
-`msg.actions.append(of.ofp_action_output(port = port))`
-`msg.buffer_id = <some buffer id, if any>`
-`connection.send(msg)`
+```
+msg = ofp_flow_mod()
+msg.match = match
+msg.idle_timeout = idle_timeout
+msg.hard_timeout = hard_timeout
+msg.actions.append(of.ofp_action_output(port = port))
+msg.buffer_id = <some buffer id, if any>
+connection.send(msg)
+```
 
 Using the connection variable obtained when the datapath joined, we can send the flowmod to the switch.
 
@@ -51,9 +53,11 @@ Using the connection variable obtained when the datapath joined, we can send the
 
 In a similar manner to a flow mod, one must first define a packet out as shown here:
 
-`msg = of.ofp_packet_out(in_port=of.OFPP_NONE)`
-`msg.actions.append(of.ofp_action_output(port = outport))`
-`msg.buffer_id = <some buffer id, if any>`
-`connection.send(msg)`
+```
+msg = of.ofp_packet_out(in_port=of.OFPP_NONE)
+msg.actions.append(of.ofp_action_output(port = outport))
+msg.buffer_id = <some buffer id, if any>
+connection.send(msg)
+```
 
 The inport is set to OFPP_NONE because the packet was generated at the controller and did not originate as a packet in at the datapath.
