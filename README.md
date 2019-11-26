@@ -26,3 +26,7 @@ OpenFlow defines a match structure – ofp_match – which enables you to define
 There is a simple way to create an exact match based on an existing packet object (that is, an ethernet object from pox.lib.packet) or from an existing ofp_packet_in.  This is done using the factory method ofp_match.from_packet().
 
 `my_match = ofp_match.from_packet(packet)`
+
+### Output
+
+Forward packets out of a physical or virtual port. Physical ports are referenced to by their integral value, while virtual ports have symbolic names. Physical ports should have port numbers less than 0xFF00.
