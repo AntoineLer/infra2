@@ -2,6 +2,8 @@
 
 LOL
 
+Lien DOC : https://openflow.stanford.edu/display/ONL/POX+Wiki.html#POXWiki-ofp_packet_out-Sendingpacketsfromtheswitch
+
 ## ofp_packet_out - Sending packets from the switch
 
 The main purpose of this message is to instruct a switch to send a packet (or enqueue it).  However it can also be useful as a way to instruct a switch to discard a buffered packet (by simply not specifying any actions).
