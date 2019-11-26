@@ -1,12 +1,30 @@
 from pox.core import core
 from pox.lib.util import dpid_to_str
+from pox.openflow.discovery import Discovery
 
 log = core.getLogger()
 
 
 class MyComponent (object):
     def __init__(self):
-        core.openflow.addListeners(self)
+        def startup():
+            core.openflow.addListeners(self, priority = 0)
+            core.openflow_discovery.addListeners(self)
+        core.call_when_ready(startup, ('openflow','openflow_discovery'))
+
+    def _handle_LinkEvent(self, event):
+        l = event.link
+        sw1 = l.dpid1
+        sw2 = l.dpid2
+        pt1 = l.port1
+        pt2 = l.port2
+
+        print 'link added is %s'%event.added
+        print 'link removed is %s' %event.removed
+        print 'switch1 %d' %l.dpid1
+        print 'port1 %d' %l.port1
+        print 'switch2 %d' %l.dpid2
+        print 'port2 %d' %l.port2
 
     def _handle_ConnectionUp(self, event):
         """
