@@ -3,6 +3,7 @@ from pox.lib.util import dpid_to_str
 from pox.openflow.discovery import Discovery
 import pox.openflow.libopenflow_01 as of
 from pox.lib.revent import *
+from clostopo import ClosTopo
 
 log = core.getLogger()
 
@@ -33,7 +34,9 @@ class Switch(EventMixin):
         log.debug("New Packet in switch" + dpid_to_str(self.dpid))
 
 class Tree (object):
-    def __init__(self):
+    def __init__(self, nCore=2, nEdge=3, nHosts=3, bw=10):
+        topo = ClosTopo(nCore, nEdge, nHosts, bw)
+        print(len(topo.coreSwitches()))
         self.switches = {}
         def startup():
             core.openflow.addListeners(self)
@@ -56,7 +59,7 @@ class Tree (object):
         """
         here's a very simple POX component that listens to ConnectionUp events from all switches, and logs a message when one occurs.
         """
-        log.debug("test")
+        log.debug("New Switch Connection")
         switch = self.switches.get(event.dpid)
         if switch is None:
             # New switch
@@ -67,7 +70,14 @@ class Tree (object):
             switch.connect(event.connection)
 
     def _handle_ConnectionDown(self, event):
-        log.debug("AIE")
+        log.debug("Switch Deconnection")
+        switch = self.switches.get(event.dpid)
+        if switch is None:
+            log.debug("Should never happen please")
+        else:
+            switch.disconnect()
+        log.debug("switch " + dpid_to_str(event.dpid) + " down")
+        #Bonus here
 
     def _handle_PortStatus(self, event):
         """
@@ -83,5 +93,5 @@ class Tree (object):
         print "Port %s on Switch %s has been %s." % (event.port, event.dpid, action)
 
 
-def launch():
-    core.registerNew(Tree)
+def launch(nCore=2, nEdge=3, nHosts=3, bw=10):
+    core.registerNew(Tree, int(nCore), int(nEdge), int(nHosts), int(bw))
