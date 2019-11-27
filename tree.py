@@ -35,8 +35,12 @@ class Switch(EventMixin):
 
 class Tree (object):
     def __init__(self, nCore=2, nEdge=3, nHosts=3, bw=10):
-        topo = ClosTopo(nCore, nEdge, nHosts, bw)
-        print(len(topo.coreSwitches()))
+        #topo = ClosTopo(nCore, nEdge, nHosts, bw)
+        #print(topo.coreSwitches())
+        #print(topo.edgeSwitches())
+        self.nCore = nCore
+        self.nEdge = nEdge
+        self.nHost = nEdge * nHosts
         self.switches = {}
         def startup():
             core.openflow.addListeners(self)
