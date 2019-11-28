@@ -1,6 +1,7 @@
 from pox.core import core
 from pox.lib.util import dpid_to_str
 from pox.openflow.discovery import Discovery
+import pox.openflow.libopenflow_01 as of
 
 log = core.getLogger()
 
@@ -8,23 +9,22 @@ log = core.getLogger()
 class MyComponent (object):
     def __init__(self):
         def startup():
-            core.openflow.addListeners(self, priority = 0)
+            core.openflow.addListeners(self)
             core.openflow_discovery.addListeners(self)
         core.call_when_ready(startup, ('openflow','openflow_discovery'))
+        log.debug("init over")
 
     def _handle_LinkEvent(self, event):
+        """
+        When link changes for example -> link h1 s3 hold_down
+        """
         l = event.link
         sw1 = l.dpid1
         sw2 = l.dpid2
         pt1 = l.port1
         pt2 = l.port2
 
-        print 'link added is %s'%event.added
-        print 'link removed is %s' %event.removed
-        print 'switch1 %d' %l.dpid1
-        print 'port1 %d' %l.port1
-        print 'switch2 %d' %l.dpid2
-        print 'port2 %d' %l.port2
+        log.debug(core.openflow_discovery.adjacency)
 
     def _handle_ConnectionUp(self, event):
         """

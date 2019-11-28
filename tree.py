@@ -134,9 +134,6 @@ class Tree (object):
         core.call_when_ready(startup, ('openflow', 'openflow_discovery'))
 
     def _handle_LinkEvent(self, event):
-        """
-        When link changes for example -> link h1 s3 hold_down
-        """
         link = event.link
         switch_1 = self.switches.get(link.dpid1)
         switch_2 = self.switches.get(link.dpid2)
