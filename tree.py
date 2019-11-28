@@ -54,10 +54,8 @@ class Switch(EventMixin):
         """
 
         # Learn the port for the source MAC
-        log.debug("\n")
+        log.debug("Packet in Switch s" + str(self.dpid) + "\n")
         self.mac_to_port[packet.src] = packet_in.in_port
-        log.debug(str(self.mac_to_port))
-        log.debug("ID SWITCH: " + str(self.dpid))
 
         if packet.dst in self.mac_to_port:
             self.resend_packet(packet_in, self.mac_to_port[packet.dst])
@@ -66,7 +64,7 @@ class Switch(EventMixin):
             log.debug("Destination MAC: " + str(packet.dst))
             log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
 
-            msg = of.ofp_flow_mod()
+            msg = of.ofp_flow_mod() #Push rule in table
             msg.match = of.ofp_match.from_packet(packet)
             msg.idle_timeout = of.OFP_FLOW_PERMANENT
             msg.hard_timeout = of.OFP_FLOW_PERMANENT
@@ -74,7 +72,6 @@ class Switch(EventMixin):
             action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
             msg.actions.append(action)
             self.connection.send(msg)
-
         else:
             self.resend_packet(packet_in, of.OFPP_FLOOD)
 
@@ -115,11 +112,12 @@ class Tree (object):
         switch_2 = self.switches.get(link.dpid2)
         port_1 = link.port1
         port_2 = link.port2
-        if 's' + str(switch_1.dpid) == 's2' or 's' + str(switch_2.dpid) == 's2':
-            switch_1.disable_flooding(port_1)
+
+        if switch_1.isCore and self.root.dpid is not switch_1.dpid:
             switch_2.disable_flooding(port_2)
+        elif switch_2.isCore and self.root.dpid is not switch_2.dpid:
+            switch_1.disable_flooding(port_1)
         log.debug("PLEASE FONCTIONNE")
-        # log.debug(core.openflow_discovery.adjacency)
 
     def _handle_ConnectionUp(self, event):
         """
@@ -134,10 +132,10 @@ class Tree (object):
             switch.connect(event.connection, self.topo)
         else:
             switch.connect(event.connection, self.topo)
-            
-        if self.root is None and switch.isCore():
+
+        if self.root is None and switch.isCore:
             self.root = switch
-        elif switch.isCore() and switch.dpid <= self.root.dpid:
+        elif switch.isCore and switch.dpid < self.root.dpid:
             self.root_dpid = switch.dpid
             self.root = switch
 
