@@ -7,8 +7,6 @@ from clostopo import ClosTopo
 
 log = core.getLogger()
 
-blocked = False
-
 class Switch(EventMixin):
 
     def __init__(self):
@@ -55,64 +53,41 @@ class Switch(EventMixin):
         Implement switch-like behavior.
         """
 
-        # Here's some pseudocode to start you off implementing a learning
-        # switch.  You'll need to rewrite it as real Python code.
-
         # Learn the port for the source MAC
         log.debug("\n")
         self.mac_to_port[packet.src] = packet_in.in_port
-        log.debug(str(self.mac_to_port))  
+        log.debug(str(self.mac_to_port))
         log.debug("ID SWITCH: " + str(self.dpid))
 
         if packet.dst in self.mac_to_port:
-            # Send packet out the associated port
-            # self.resend_packet(packet_in, self.mac_to_port[packet.dst])
-            # Once you have the above working, try pushing a flow entry
-            # instead of resending the packet (comment out the above and
-            # uncomment and complete the below.)
-
-            # Maybe the log statement should have source/destination/port?
+            self.resend_packet(packet_in, self.mac_to_port[packet.dst])
             log.debug("Installing flow...")
             log.debug("Source MAC: " + str(packet.src))
             log.debug("Destination MAC: " + str(packet.dst))
-            log.debug("Packet out port: " + str(self.mac_to_port[packet.dst]) + "\n")
+            log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
 
             msg = of.ofp_flow_mod()
-            #
-            # Set fields to match received packet
             msg.match = of.ofp_match.from_packet(packet)
-            #
-            # < Set other fields of flow_mod (timeouts? buffer_id?) >
-            #msg.idle_timeout = 30
-            #msg.hard_timeout = 60
+            msg.idle_timeout = of.OFP_FLOW_PERMANENT
+            msg.hard_timeout = of.OFP_FLOW_PERMANENT
             msg.buffer_id = packet_in.buffer_id
             action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
             msg.actions.append(action)
-            # log.debug(str(msg))
-            #
-            # < Add an output action, and send -- similar to resend_packet() >
             self.connection.send(msg)
 
         else:
-            # Flood the packet out everything but the input port
-            # This part looks familiar, right?
             self.resend_packet(packet_in, of.OFPP_FLOOD)
 
     def _handle_PacketIn(self, event):
         """
         Handles packet in messages from the switch.
         """
-
         packet = event.parsed  # This is the parsed packet data.
         if not packet.parsed:
             log.warning("Ignoring incomplete packet")
             return
 
         packet_in = event.ofp  # The actual ofp_packet_in message.
-
-        # Comment out the following line and uncomment the one after
-        # when starting the exercise.
-        # self.act_like_hub(packet, packet_in)
         self.act_like_switch(packet, packet_in)
 
     def disable_flooding(self, port):
@@ -128,6 +103,7 @@ class Tree (object):
         self.nEdge = nEdge
         self.nHost = nEdge * nHosts
         self.switches = {}
+        self.root = None #Will be the main switch Core
         def startup():
             core.openflow.addListeners(self)
             core.openflow_discovery.addListeners(self)
@@ -139,14 +115,10 @@ class Tree (object):
         switch_2 = self.switches.get(link.dpid2)
         port_1 = link.port1
         port_2 = link.port2
-        if (switch_1.isCore and ('s' + str(switch_1.dpid) is not 's1')) or (switch_2.isCore and ('s' + str(switch_2.dpid) is not 's1')): #faire une variable ou quoi pour désigner le root core (modifier clostopo ?) 
+        if 's' + str(switch_1.dpid) == 's2' or 's' + str(switch_2.dpid) == 's2':
             switch_1.disable_flooding(port_1)
-            switch_2.disable_flooding(port_2)           
-
-        #if 's' + str(switch_1.dpid) == 's2' or 's' + str(switch_2.dpid) == 's2':
-        #    switch_1.disable_flooding(port_1)
-        #    switch_2.disable_flooding(port_2)  
-        #log.debug("PLEASE FONCTIONNE")
+            switch_2.disable_flooding(port_2)
+        log.debug("PLEASE FONCTIONNE")
         # log.debug(core.openflow_discovery.adjacency)
 
     def _handle_ConnectionUp(self, event):
@@ -162,6 +134,12 @@ class Tree (object):
             switch.connect(event.connection, self.topo)
         else:
             switch.connect(event.connection, self.topo)
+            
+        if self.root is None and switch.isCore():
+            self.root = switch
+        elif switch.isCore() and switch.dpid <= self.root.dpid:
+            self.root_dpid = switch.dpid
+            self.root = switch
 
     def _handle_ConnectionDown(self, event):
         log.debug("Switch Deconnection")
