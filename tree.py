@@ -139,10 +139,14 @@ class Tree (object):
         switch_2 = self.switches.get(link.dpid2)
         port_1 = link.port1
         port_2 = link.port2
-        if 's' + str(switch_1.dpid) == 's2' or 's' + str(switch_2.dpid) == 's2':
+        if (switch_1.isCore and ('s' + str(switch_1.dpid) is not 's1')) or (switch_2.isCore and ('s' + str(switch_2.dpid) is not 's1')): #faire une variable ou quoi pour désigner le root core (modifier clostopo ?) 
             switch_1.disable_flooding(port_1)
-            switch_2.disable_flooding(port_2)  
-        log.debug("PLEASE FONCTIONNE")
+            switch_2.disable_flooding(port_2)           
+
+        #if 's' + str(switch_1.dpid) == 's2' or 's' + str(switch_2.dpid) == 's2':
+        #    switch_1.disable_flooding(port_1)
+        #    switch_2.disable_flooding(port_2)  
+        #log.debug("PLEASE FONCTIONNE")
         # log.debug(core.openflow_discovery.adjacency)
 
     def _handle_ConnectionUp(self, event):
