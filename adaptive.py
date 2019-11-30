@@ -17,8 +17,9 @@ class Switch(EventMixin):
         self.isCore = None
         self.mac_to_port = {}
         self.edgeToCore = {}
-        Timer(1, self._timer_func, recurring=True)
-        self.bw = {}
+        Timer(5, self._timer_func, recurring=True)
+        self.current_bw = {}
+        self.total_bw = {}
 
     def connect(self, connection, topo):
         if self.dpid is None:
@@ -35,6 +36,8 @@ class Switch(EventMixin):
             self.connection.removeListeners(self._listeners)
             self.connection = None
             self._listeners = None
+            self.total_bw = {}
+            self.current_bw = {}
 
     def resend_packet(self, packet_in, out_port):
         """
@@ -56,27 +59,36 @@ class Switch(EventMixin):
         """
         Implement switch-like behavior.
         """
-        # Learn the port for the source MAC
         log.debug("Packet in Switch s" + str(self.dpid))
-        self.mac_to_port[packet.src] = packet_in.in_port
-
-        if packet.dst in self.mac_to_port:
-            self.resend_packet(packet_in, self.mac_to_port[packet.dst])
-            log.debug("Installing flow...")
-            log.debug("Source MAC: " + str(packet.src))
-            log.debug("Destination MAC: " + str(packet.dst))
-            log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
-
-            msg = of.ofp_flow_mod() #Push rule in table
-            msg.match = of.ofp_match.from_packet(packet)
-            msg.idle_timeout = of.OFP_FLOW_PERMANENT
-            msg.hard_timeout = of.OFP_FLOW_PERMANENT
-            msg.buffer_id = packet_in.buffer_id
-            action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
-            msg.actions.append(action)
-            self.connection.send(msg)
+        if self.isCore:
+            self.mac_to_port[packet.src] = packet_in.in_port
+            if packet.dst in self.mac_to_port:
+                self.push_flow(packet, packet_in, self.mac_to_port[packet.dst])
+            else:
+                self.resend_packet(packet_in, of.OFPP_FLOOD)
         else:
-            self.resend_packet(packet_in, of.OFPP_FLOOD)
+            if packet_in.in_port not in self.edgeToCore.values():
+                """
+                If packet comes from hosts
+                """
+                self.mac_to_port[packet.src] = packet_in.in_port
+                
+
+    def push_flow(self, packet, packet_in, port, idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT):
+        self.resend_packet(packet_in, port)
+        log.debug("Installing flow...")
+        log.debug("Source MAC: " + str(packet.src))
+        log.debug("Destination MAC: " + str(packet.dst))
+        log.debug("Out port: " + str(port) + "\n")
+
+        msg = of.ofp_flow_mod() #Push rule in table
+        msg.match = of.ofp_match.from_packet(packet)
+        msg.idle_timeout = idle_timeout
+        msg.hard_timeout = hard_timeout
+        msg.buffer_id = packet_in.buffer_id
+        action = of.ofp_action_output(port=port)
+        msg.actions.append(action)
+        self.connection.send(msg)
 
     def _handle_PacketIn(self, event):
         """
@@ -90,7 +102,7 @@ class Switch(EventMixin):
         packet_in = event.ofp  # The actual ofp_packet_in message.
         self.act_like_switch(packet, packet_in)
 
-    def add_vlan_rule(self, port, coreDpid):
+    def add_edge_to_core(self, port, coreDpid):
         log.debug("Edge Switch " + str(self.dpid) + " Learns Vlan translation with core Switch " + str(coreDpid))
         self.edgeToCore[coreDpid] = port
 
@@ -121,15 +133,14 @@ class Switch(EventMixin):
         """
         if not self.isCore:
             stats = event.stats
-            for tmp in stats:
-                if tmp.port_no < 100 and tmp.port_no in self.edgeToCore.values():
+            for portStat in stats:
+                if portStat.port_no in self.edgeToCore.values():
                     try:
-                        old_bw = self.bw[tmp.port_no]
+                        old_bw = self.total_bw[portStat.port_no]
                     except:
                         old_bw = 0
-                    self.bw[tmp.port_no] = tmp.rx_bytes + tmp.tx_bytes
-                    current_bw = self.bw[tmp.port_no] - old_bw
-            log.debug("\n")
+                    self.total_bw[portStat.port_no] = portStat.rx_bytes + portStat.tx_bytes
+                    self.current_bw[portStat.port_no] = (self.total_bw[portStat.port_no] - old_bw)/5
 
 class Adaptive(object):
     def __init__(self, nCore=2, nEdge=3, nHosts=3, bw=10):
@@ -152,10 +163,10 @@ class Adaptive(object):
 
         if switch_1.isCore and not switch_2.isCore:
             switch_2.disable_flooding(port_2)
-            switch_2.add_vlan_rule(port_2, switch_1.dpid)
+            switch_2.add_edge_to_core(port_2, switch_1.dpid)
         elif switch_2.isCore and not switch_1.isCore:
             switch_1.disable_flooding(port_1)
-            switch_1.add_vlan_rule(port_1, switch_2.dpid)
+            switch_1.add_edge_to_core(port_1, switch_2.dpid)
 
     def _handle_ConnectionUp(self, event):
         """
