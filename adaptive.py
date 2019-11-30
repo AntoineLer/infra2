@@ -4,6 +4,7 @@ from pox.openflow.discovery import Discovery
 import pox.openflow.libopenflow_01 as of
 from pox.lib.revent import *
 from clostopo import ClosTopo
+from pox.lib.recoco import Timer
 
 log = core.getLogger()
 
@@ -15,6 +16,9 @@ class Switch(EventMixin):
         self._listener = None
         self.isCore = None
         self.mac_to_port = {}
+        self.edgeToCore = {}
+        Timer(1, self._timer_func, recurring=True)
+        self.bw = {}
 
     def connect(self, connection, topo):
         if self.dpid is None:
@@ -52,9 +56,8 @@ class Switch(EventMixin):
         """
         Implement switch-like behavior.
         """
-
         # Learn the port for the source MAC
-        log.debug("Packet in Switch s" + str(self.dpid) + "\n")
+        log.debug("Packet in Switch s" + str(self.dpid))
         self.mac_to_port[packet.src] = packet_in.in_port
 
         if packet.dst in self.mac_to_port:
@@ -66,8 +69,8 @@ class Switch(EventMixin):
 
             msg = of.ofp_flow_mod() #Push rule in table
             msg.match = of.ofp_match.from_packet(packet)
-            msg.idle_timeout = 30
-            msg.hard_timeout = 60
+            msg.idle_timeout = of.OFP_FLOW_PERMANENT
+            msg.hard_timeout = of.OFP_FLOW_PERMANENT
             msg.buffer_id = packet_in.buffer_id
             action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
             msg.actions.append(action)
@@ -87,20 +90,54 @@ class Switch(EventMixin):
         packet_in = event.ofp  # The actual ofp_packet_in message.
         self.act_like_switch(packet, packet_in)
 
+    def add_vlan_rule(self, port, coreDpid):
+        log.debug("Edge Switch " + str(self.dpid) + " Learns Vlan translation with core Switch " + str(coreDpid))
+        self.edgeToCore[coreDpid] = port
+
     def disable_flooding(self, port):
         msg = of.ofp_port_mod(
             port_no=port, hw_addr=self.connection.ports[port].hw_addr, config=of.OFPPC_NO_FLOOD, mask=of.OFPPC_NO_FLOOD)
         self.connection.send(msg)
 
+    def enable_flooding(self, port):
+        msg = of.ofp_port_mod(port_no = port,
+                              hw_addr = self.connection.ports[port].hw_addr,
+                              config = 0, # opposite of of.OFPPC_NO_FLOOD,
+                              mask = of.OFPPC_NO_FLOOD)
+        self.connection.send(msg)
 
-class Tree (object):
+    def _timer_func (self):
+        """
+        Recurring function to request stats from switches
+        for each connection (which represents a switch actually)
+        request statistics
+        """
+        if self.connection is not None:
+            self.connection.send(of.ofp_stats_request(body=of.ofp_port_stats_request()))
+
+    def _handle_PortStatsReceived(self, event):
+        """
+        handles PortStatus
+        """
+        if not self.isCore:
+            stats = event.stats
+            for tmp in stats:
+                if tmp.port_no < 100 and tmp.port_no in self.edgeToCore.values():
+                    try:
+                        old_bw = self.bw[tmp.port_no]
+                    except:
+                        old_bw = 0
+                    self.bw[tmp.port_no] = tmp.rx_bytes + tmp.tx_bytes
+                    current_bw = self.bw[tmp.port_no] - old_bw
+            log.debug("\n")
+
+class Adaptive(object):
     def __init__(self, nCore=2, nEdge=3, nHosts=3, bw=10):
         self.topo = ClosTopo(nCore, nEdge, nHosts, bw)
         self.nCore = nCore
         self.nEdge = nEdge
         self.nHost = nEdge * nHosts
         self.switches = {}
-        self.root = None #Will be the main switch Core
         def startup():
             core.openflow.addListeners(self)
             core.openflow_discovery.addListeners(self)
@@ -113,11 +150,12 @@ class Tree (object):
         port_1 = link.port1
         port_2 = link.port2
 
-        if switch_1.isCore and self.root.dpid is not switch_1.dpid:
+        if switch_1.isCore and not switch_2.isCore:
             switch_2.disable_flooding(port_2)
-        elif switch_2.isCore and self.root.dpid is not switch_2.dpid:
+            switch_2.add_vlan_rule(port_2, switch_1.dpid)
+        elif switch_2.isCore and not switch_1.isCore:
             switch_1.disable_flooding(port_1)
-        log.debug("PLEASE FONCTIONNE")
+            switch_1.add_vlan_rule(port_1, switch_2.dpid)
 
     def _handle_ConnectionUp(self, event):
         """
@@ -132,12 +170,6 @@ class Tree (object):
             switch.connect(event.connection, self.topo)
         else:
             switch.connect(event.connection, self.topo)
-
-        if self.root is None and switch.isCore:
-            self.root = switch
-        elif switch.isCore and switch.dpid < self.root.dpid:
-            self.root_dpid = switch.dpid
-            self.root = switch
 
     def _handle_ConnectionDown(self, event):
         log.debug("Switch Deconnection")
@@ -162,6 +194,5 @@ class Tree (object):
             action = "modified"
         print "Port %s on Switch %s has been %s." % (event.port, event.dpid, action)
 
-
 def launch(nCore=2, nEdge=3, nHosts=3, bw=10):
-    core.registerNew(Tree, int(nCore), int(nEdge), int(nHosts), int(bw))
+    core.registerNew(Adaptive, nCore=int(nCore), nEdge=int(nEdge), nHosts=int(nHosts), bw=int(bw))
