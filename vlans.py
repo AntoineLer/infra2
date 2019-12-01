@@ -5,6 +5,7 @@ import pox.openflow.libopenflow_01 as of
 from pox.lib.revent import *
 from clostopo import ClosTopo
 from tenant import Tenant
+from pox.lib.addresses import EthAddr
 
 log = core.getLogger()
 
@@ -18,6 +19,7 @@ class Switch(EventMixin):
         self.mac_to_port = {}
         self.edgeToCore = {}
         self.tenant = tenant
+        self.broadcast = EthAddr('ff:ff:ff:ff:ff:ff')
 
     def connect(self, connection, topo):
         if self.dpid is None:
@@ -57,28 +59,74 @@ class Switch(EventMixin):
         """
         # Learn the port for the source MAC
         log.debug("Packet in Switch s" + str(self.dpid))
-        self.mac_to_port[packet.src] = packet_in.in_port
 
         if packet.dst in self.mac_to_port:
+            log.debug("Dst " + str(packet.dst) + " known in the switch")
+            if self.isCore:
+                log.debug("Current switch is a Core")
+                self.mac_to_port[packet.src] = packet_in.in_port
+                log.debug("install flow between src <----> dst")
+                self.create_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                self.create_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.src)
+                if coreDPID is not self.dpid:
+                    log.debug("Not good vlan id, but installed flows anyway")
+                    log.debug("End treating packet\n")
+                    return
+            else:
+                log.debug("Current switch is a Edge")
+                if packet_in.in_port in self.edgeToCore.values():
+                    log.debug("Packet received from a Core Switch")
+                    log.debug("install flow src ----> dst")
+                    self.create_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    log.debug("install flow host ----> corresponding core")
+                    (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.dst)
+                    self.create_flow(packet.dst, packet.src, self.edgeToCore[coreDPID], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                else:
+                    log.debug("Packet received from a host")
+                    self.mac_to_port[packet.src] = packet_in.in_port
+                    log.debug("install flow between src <----> dst")
+                    self.create_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.create_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
             self.resend_packet(packet_in, self.mac_to_port[packet.dst])
-            log.debug("Installing flow...")
-            log.debug("Source MAC: " + str(packet.src))
-            log.debug("Destination MAC: " + str(packet.dst))
-            log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
-
-            msg = of.ofp_flow_mod() #Push rule in table
-            msg.match = of.ofp_match.from_packet(packet)
-            msg.idle_timeout = of.OFP_FLOW_PERMANENT
-            msg.hard_timeout = of.OFP_FLOW_PERMANENT
-            msg.buffer_id = packet_in.buffer_id
-            action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
-            msg.actions.append(action)
-            self.connection.send(msg)
         else:
-            self.resend_packet(packet_in, of.OFPP_FLOOD)
-            if not self.isCore:
-                (_, coreDPID) = self.tenant.getVlanTranslation(packet.src)
-                self.resend_packet(packet_in, self.edgeToCore[coreDPID])
+            log.debug("dst " + str(packet.dst) + " not known in the switch")
+            if self.isCore:
+                log.debug("Current switch is a Core")
+                self.mac_to_port[packet.src] = packet_in.in_port
+                (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.src)
+                if coreDPID is not self.dpid:
+                    log.debug("Not good vlan id, but maintains info anyway")
+                    log.debug("End treating packet\n")
+                    return
+                self.resend_packet(packet_in, of.OFPP_FLOOD)
+            else:
+                log.debug("Current switch is a Edge")
+                if packet_in.in_port in self.edgeToCore.values():
+                    log.debug("Packet received from a Core Switch")
+                    self.resend_packet(packet_in, of.OFPP_FLOOD)
+                else:
+                    log.debug("Packet received from a host")
+                    self.mac_to_port[packet.src] = packet_in.in_port
+                    self.resend_packet(packet_in, of.OFPP_FLOOD)
+                    for dpid in self.edgeToCore:
+                        self.resend_packet(packet_in, self.edgeToCore[dpid])
+        log.debug("End treating packet\n")
+
+
+    def create_flow(self, src, dst, port, idle_timeout=15, hard_timeout=30) :
+        log.debug("Installing flow...")
+        log.debug("Source MAC: " + str(src))
+        log.debug("Destination MAC: " + str(dst))
+        log.debug("Out port: " + str(port))
+        msg = of.ofp_flow_mod() #Push rule in table
+        msg.match = of.ofp_match(dl_src=src, dl_dst=dst)
+        msg.idle_timeout = idle_timeout
+        msg.hard_timeout = hard_timeout
+
+        action = of.ofp_action_output(port=port)
+        msg.actions.append(action)
+        self.connection.send(msg)
 
     def _handle_PacketIn(self, event):
         """
