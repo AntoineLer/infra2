@@ -242,7 +242,7 @@ class Switch(EventMixin):
                     except:
                         old_bw = 0
                     self.total_bw[portStat.port_no] = portStat.rx_bytes + portStat.tx_bytes
-                    self.current_bw[portStat.port_no] = (self.total_bw[portStat.port_no] - old_bw)/5
+                    self.current_bw[portStat.port_no] = (self.total_bw[portStat.port_no] - old_bw)/3
 
 class Adaptive(object):
     def __init__(self, nCore=2, nEdge=3, nHosts=3, bw=10):
