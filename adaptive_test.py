@@ -17,7 +17,7 @@ class Switch(EventMixin):
         self.isCore = None
         self.mac_to_port = {}
         self.edgeToCore = {}
-        Timer(5, self._timer_func, recurring=True)
+        Timer(3, self._timer_func, recurring=True)
         self.current_bw = {}
         self.total_bw = {}
 
@@ -97,8 +97,8 @@ class Switch(EventMixin):
 
                 msg = of.ofp_flow_mod() #Push rule in table
                 msg.match = of.ofp_match.from_packet(packet)
-                msg.idle_timeout = 15
-                msg.hard_timeout = 30
+                msg.idle_timeout = 3
+                msg.hard_timeout = 10
                 action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
                 msg.actions.append(action)
                 self.connection.send(msg)
