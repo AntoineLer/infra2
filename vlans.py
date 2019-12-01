@@ -116,7 +116,7 @@ class Switch(EventMixin):
                     self.install_flow(
                         packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
                     #log.debug("install flow host ----> corresponding vlan core")
-                    """ install flow for the Vlan policy"""
+                    """ install flow for the Vlan policy packet.dst ----> Core switch given Vlan id of packet.dst"""
                     (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.dst)
                     self.install_flow(
                         packet.dst, packet.src, self.edgeToCore[coreDPID], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
