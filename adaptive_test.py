@@ -17,7 +17,7 @@ class Switch(EventMixin):
         self.isCore = None
         self.mac_to_port = {}
         self.edgeToCore = {}
-        Timer(5, self._timer_func, recurring=True)
+        Timer(1, self._timer_func, recurring=True)
         self.current_bw = {}
         self.total_bw = {}
 
@@ -81,7 +81,7 @@ class Switch(EventMixin):
                 action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
                 msg.actions.append(action)
                 self.connection.send(msg)
-                    
+
             else:
                 self.resend_packet(packet_in, of.OFPP_FLOOD)
 
@@ -106,7 +106,7 @@ class Switch(EventMixin):
 
             else:
                 self.resend_packet(packet_in, of.OFPP_FLOOD)
-                
+
                 #faire la condition if packet_in.in_port is not an up link to a core
                 if packet_in.in_port not in self.edgeToCore.values():
                     port = min(self.current_bw, key=self.current_bw.get)
@@ -122,9 +122,9 @@ class Switch(EventMixin):
 
 
 
-    
 
-                
+
+
 
     def push_flow(self, packet, packet_in, port, idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT):
         self.resend_packet(packet_in, port)
