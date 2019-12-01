@@ -181,6 +181,7 @@ class Tree (object):
         else:
             switch.connect(event.connection, self.topo)
 
+        """Update root if needed"""
         if self.root is None and switch.isCore:
             self.root = switch
         elif switch.isCore and switch.dpid < self.root.dpid:
