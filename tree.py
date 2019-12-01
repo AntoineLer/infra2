@@ -51,29 +51,35 @@ class Switch(EventMixin):
 
     def act_like_switch(self, packet, packet_in):
         """
-        Implement switch-like behavior.
+        Implement switch-like behavior with the tree policy
         """
 
-        # Learn the port for the source MAC
-        log.debug("Packet in Switch s" + str(self.dpid) + "\n")
+        #log.debug("Packet in Switch s" + str(self.dpid) + "\n")
+        """keep the port corresponding to the source MAC address"""
         self.mac_to_port[packet.src] = packet_in.in_port
 
+        """if the destination is known"""
         if packet.dst in self.mac_to_port:
+            """resend packet to the good port"""
             self.resend_packet(packet_in, self.mac_to_port[packet.dst])
-            log.debug("Installing flow...")
-            log.debug("Source MAC: " + str(packet.src))
-            log.debug("Destination MAC: " + str(packet.dst))
-            log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
+            #log.debug("Installing flow...")
+            #log.debug("Source MAC: " + str(packet.src))
+            #log.debug("Destination MAC: " + str(packet.dst))
+            #log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
 
-            msg = of.ofp_flow_mod()  # Push rule in table
-            msg.match = of.ofp_match(dl_src=packet.src, dl_dst=packet.dst)
+            """install a permanent flow matching the destination of the packet with the good port"""
+            msg = of.ofp_flow_mod()
+            msg.match = of.ofp_match(dl_dst=packet.dst)
             msg.idle_timeout = of.OFP_FLOW_PERMANENT
             msg.hard_timeout = of.OFP_FLOW_PERMANENT
             msg.buffer_id = packet_in.buffer_id
             action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
             msg.actions.append(action)
             self.connection.send(msg)
+
+
         else:
+            """if the destination is unknow, flood"""
             self.resend_packet(packet_in, of.OFPP_FLOOD)
 
     def _handle_PacketIn(self, event):
@@ -119,7 +125,7 @@ class Tree (object):
             switch_2.disable_flooding(port_2)
         elif switch_2.isCore and self.root.dpid is not switch_2.dpid:
             switch_1.disable_flooding(port_1)
-        log.debug("PLEASE FONCTIONNE")
+        #log.debug("PLEASE FONCTIONNE")
 
     def _handle_ConnectionUp(self, event):
         """
@@ -162,7 +168,6 @@ class Tree (object):
             action = "removed"
         else:
             action = "modified"
-        print "Port %s on Switch %s has been %s." % (event.port, event.dpid, action)
 
 
 def launch(nCore=2, nEdge=3, nHosts=3, bw=10):
