@@ -66,8 +66,8 @@ class Switch(EventMixin):
                 log.debug("Current switch is a Core")
                 self.mac_to_port[packet.src] = packet_in.in_port
                 log.debug("install flow between src <----> dst")
-                self.create_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                self.create_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                self.install_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                self.install_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
                 (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.src)
                 if coreDPID is not self.dpid:
                     log.debug("Not good vlan id, but installed flows anyway")
@@ -78,16 +78,16 @@ class Switch(EventMixin):
                 if packet_in.in_port in self.edgeToCore.values():
                     log.debug("Packet received from a Core Switch")
                     log.debug("install flow src ----> dst")
-                    self.create_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
                     log.debug("install flow host ----> corresponding core")
                     (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.dst)
-                    self.create_flow(packet.dst, packet.src, self.edgeToCore[coreDPID], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(packet.dst, packet.src, self.edgeToCore[coreDPID], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
                 else:
                     log.debug("Packet received from a host")
                     self.mac_to_port[packet.src] = packet_in.in_port
                     log.debug("install flow between src <----> dst")
-                    self.create_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                    self.create_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
             self.resend_packet(packet_in, self.mac_to_port[packet.dst])
         else:
             log.debug("dst " + str(packet.dst) + " not known in the switch")
@@ -114,7 +114,7 @@ class Switch(EventMixin):
         log.debug("End treating packet\n")
 
 
-    def create_flow(self, src, dst, port, idle_timeout=15, hard_timeout=30) :
+    def install_flow(self, src, dst, port, idle_timeout=15, hard_timeout=30) :
         log.debug("Installing flow...")
         log.debug("Source MAC: " + str(src))
         log.debug("Destination MAC: " + str(dst))

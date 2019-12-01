@@ -65,9 +65,9 @@ class Switch(EventMixin):
             log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
 
             msg = of.ofp_flow_mod() #Push rule in table
-            msg.match = of.ofp_match.from_packet(packet)
-            msg.idle_timeout = 30
-            msg.hard_timeout = 60
+            msg.match = of.ofp_match(dl_src=packet.src, dl_dst=packet.dst)
+            msg.idle_timeout = of.OFP_FLOW_PERMANENT
+            msg.hard_timeout = of.OFP_FLOW_PERMANENT
             msg.buffer_id = packet_in.buffer_id
             action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
             msg.actions.append(action)
