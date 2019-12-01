@@ -7,6 +7,7 @@ from clostopo import ClosTopo
 
 log = core.getLogger()
 
+
 class Switch(EventMixin):
 
     def __init__(self):
@@ -42,7 +43,7 @@ class Switch(EventMixin):
         msg.data = packet_in
 
         # Add an action to send to the specified port
-        action = of.ofp_action_output(port = out_port)
+        action = of.ofp_action_output(port=out_port)
         msg.actions.append(action)
 
         # Send message to switch
@@ -64,7 +65,7 @@ class Switch(EventMixin):
             log.debug("Destination MAC: " + str(packet.dst))
             log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
 
-            msg = of.ofp_flow_mod() #Push rule in table
+            msg = of.ofp_flow_mod()  # Push rule in table
             msg.match = of.ofp_match(dl_src=packet.src, dl_dst=packet.dst)
             msg.idle_timeout = of.OFP_FLOW_PERMANENT
             msg.hard_timeout = of.OFP_FLOW_PERMANENT
@@ -100,7 +101,8 @@ class Tree (object):
         self.nEdge = nEdge
         self.nHost = nEdge * nHosts
         self.switches = {}
-        self.root = None #Will be the main switch Core
+        self.root = None  # Will be the main switch Core
+
         def startup():
             core.openflow.addListeners(self)
             core.openflow_discovery.addListeners(self)

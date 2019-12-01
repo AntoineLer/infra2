@@ -9,6 +9,7 @@ from pox.lib.addresses import EthAddr
 
 log = core.getLogger()
 
+
 class Switch(EventMixin):
 
     def __init__(self, tenant):
@@ -47,7 +48,7 @@ class Switch(EventMixin):
         msg.data = packet_in
 
         # Add an action to send to the specified port
-        action = of.ofp_action_output(port = out_port)
+        action = of.ofp_action_output(port=out_port)
         msg.actions.append(action)
 
         # Send message to switch
@@ -66,8 +67,10 @@ class Switch(EventMixin):
                 log.debug("Current switch is a Core")
                 self.mac_to_port[packet.src] = packet_in.in_port
                 log.debug("install flow between src <----> dst")
-                self.install_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                self.install_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                self.install_flow(
+                    packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                self.install_flow(
+                    packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
                 (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.src)
                 if coreDPID is not self.dpid:
                     log.debug("Not good vlan id, but installed flows anyway")
@@ -78,16 +81,20 @@ class Switch(EventMixin):
                 if packet_in.in_port in self.edgeToCore.values():
                     log.debug("Packet received from a Core Switch")
                     log.debug("install flow src ----> dst")
-                    self.install_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                    log.debug("install flow host ----> corresponding core")
+                    self.install_flow(
+                        packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    log.debug("install flow host ----> corresponding vlan core")
                     (vlan_id, coreDPID) = self.tenant.getVlanTranslation(packet.dst)
-                    self.install_flow(packet.dst, packet.src, self.edgeToCore[coreDPID], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(
+                        packet.dst, packet.src, self.edgeToCore[coreDPID], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
                 else:
                     log.debug("Packet received from a host")
                     self.mac_to_port[packet.src] = packet_in.in_port
                     log.debug("install flow between src <----> dst")
-                    self.install_flow(packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                    self.install_flow(packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(
+                        packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(
+                        packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
             self.resend_packet(packet_in, self.mac_to_port[packet.dst])
         else:
             log.debug("dst " + str(packet.dst) + " not known in the switch")
@@ -113,13 +120,12 @@ class Switch(EventMixin):
                         self.resend_packet(packet_in, self.edgeToCore[dpid])
         log.debug("End treating packet\n")
 
-
-    def install_flow(self, src, dst, port, idle_timeout=15, hard_timeout=30) :
+    def install_flow(self, src, dst, port, idle_timeout=15, hard_timeout=30):
         log.debug("Installing flow...")
         log.debug("Source MAC: " + str(src))
         log.debug("Destination MAC: " + str(dst))
         log.debug("Out port: " + str(port))
-        msg = of.ofp_flow_mod() #Push rule in table
+        msg = of.ofp_flow_mod()  # Push rule in table
         msg.match = of.ofp_match(dl_src=src, dl_dst=dst)
         msg.idle_timeout = idle_timeout
         msg.hard_timeout = hard_timeout
@@ -141,7 +147,8 @@ class Switch(EventMixin):
         self.act_like_switch(packet, packet_in)
 
     def add_vlan_rule(self, port, coreDpid):
-        log.debug("Edge Switch " + str(self.dpid) + " Learns Vlan translation with core Switch " + str(coreDpid))
+        log.debug("Edge Switch " + str(self.dpid) +
+                  " Learns Vlan translation with core Switch " + str(coreDpid))
         self.edgeToCore[coreDpid] = port
 
     def disable_flooding(self, port):
@@ -150,10 +157,10 @@ class Switch(EventMixin):
         self.connection.send(msg)
 
     def enable_flooding(self, port):
-        msg = of.ofp_port_mod(port_no = port,
-                              hw_addr = self.connection.ports[port].hw_addr,
-                              config = 0, # opposite of of.OFPPC_NO_FLOOD,
-                              mask = of.OFPPC_NO_FLOOD)
+        msg = of.ofp_port_mod(port_no=port,
+                              hw_addr=self.connection.ports[port].hw_addr,
+                              config=0,  # opposite of of.OFPPC_NO_FLOOD,
+                              mask=of.OFPPC_NO_FLOOD)
         self.connection.send(msg)
 
 
@@ -165,6 +172,7 @@ class Vlans(object):
         self.nHost = nEdge * nHosts
         self.switches = {}
         self.tenant = tenant
+
         def startup():
             core.openflow.addListeners(self)
             core.openflow_discovery.addListeners(self)
@@ -221,6 +229,8 @@ class Vlans(object):
             action = "modified"
         print "Port %s on Switch %s has been %s." % (event.port, event.dpid, action)
 
+
 def launch(nCore=2, nEdge=3, nHosts=3, bw=10, n_vlans=4):
     tenant = Tenant(int(n_vlans), int(nCore))
-    core.registerNew(Vlans, tenant, nCore=int(nCore), nEdge=int(nEdge), nHosts=int(nHosts), bw=int(bw))
+    core.registerNew(Vlans, tenant, nCore=int(nCore),
+                     nEdge=int(nEdge), nHosts=int(nHosts), bw=int(bw))
