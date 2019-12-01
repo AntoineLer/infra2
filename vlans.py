@@ -4,7 +4,7 @@ from pox.openflow.discovery import Discovery
 import pox.openflow.libopenflow_01 as of
 from pox.lib.revent import *
 from clostopo import ClosTopo
-from tenant import Tenant
+from tenants import Tenant
 from pox.lib.addresses import EthAddr
 
 log = core.getLogger()
