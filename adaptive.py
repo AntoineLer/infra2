@@ -59,33 +59,85 @@ class Switch(EventMixin):
         """
         Implement switch-like behavior.
         """
+        # Learn the port for the source MAC
         log.debug("Packet in Switch s" + str(self.dpid))
-        if self.isCore:
-            self.mac_to_port[packet.src] = packet_in.in_port
-            if packet.dst in self.mac_to_port:
-                self.push_flow(packet, packet_in, self.mac_to_port[packet.dst])
-            else:
-                self.resend_packet(packet_in, of.OFPP_FLOOD)
-        else:
-            if packet_in.in_port not in self.edgeToCore.values():
-                """
-                If packet comes from hosts
-                """
+
+        if packet.dst in self.mac_to_port:
+            log.debug("Dst " + str(packet.dst) + " known in the switch")
+            if self.isCore:
+                log.debug("Current switch is a Core")
                 self.mac_to_port[packet.src] = packet_in.in_port
-                
+                log.debug("install flow between src <----> dst")
+                self.install_flow(
+                    packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                self.install_flow(
+                    packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+            else:
+                log.debug("Current switch is a Edge")
+                if packet_in.in_port in self.edgeToCore.values():
+                    log.debug("Packet received from a Core Switch")
+                    log.debug("install flow src ----> dst")
+                    self.install_flow(
+                        packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    log.debug("install adaptive flow")
+                    #Adaptive flow of the inverse/response flow
+                    port = min(self.current_bw, key=self.current_bw.get)
+                    dl_src = packet.dst
+                    dl_dst = packet.src
+                    match = of.ofp_match.from_packet(packet)
+                    match.dl_src = dl_src
+                    match.dl_dst = dl_dst
+                    self.install_adaptive_flow(match, port)
+                else:
+                    log.debug("Packet received from a host")
+                    self.mac_to_port[packet.src] = packet_in.in_port
+                    log.debug("install flow between src <----> dst")
+                    self.install_flow(
+                        packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+                    self.install_flow(
+                        packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+            self.resend_packet(packet_in, self.mac_to_port[packet.dst])
+        else:
+            log.debug("dst " + str(packet.dst) + " not known in the switch")
+            if self.isCore:
+                log.debug("Current switch is a Core")
+                self.mac_to_port[packet.src] = packet_in.in_port
+                self.resend_packet(packet_in, of.OFPP_FLOOD)
+            else:
+                log.debug("Current switch is a Edge")
+                if packet_in.in_port in self.edgeToCore.values():
+                    log.debug("Packet received from a Core Switch")
+                    self.resend_packet(packet_in, of.OFPP_FLOOD)
+                else:
+                    log.debug("Packet received from a host")
+                    self.mac_to_port[packet.src] = packet_in.in_port
+                    self.resend_packet(packet_in, of.OFPP_FLOOD)
+                    port = min(self.current_bw, key=self.current_bw.get)
+                    self.resend_packet(packet_in, port)
+        log.debug("End treating packet\n")
 
-    def push_flow(self, packet, packet_in, port, idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT):
-        self.resend_packet(packet_in, port)
+    def install_flow(self, src, dst, port, idle_timeout=15, hard_timeout=30):
         log.debug("Installing flow...")
-        log.debug("Source MAC: " + str(packet.src))
-        log.debug("Destination MAC: " + str(packet.dst))
-        log.debug("Out port: " + str(port) + "\n")
-
-        msg = of.ofp_flow_mod() #Push rule in table
-        msg.match = of.ofp_match.from_packet(packet)
+        log.debug("Source MAC: " + str(src))
+        log.debug("Destination MAC: " + str(dst))
+        log.debug("Out port: " + str(port))
+        msg = of.ofp_flow_mod()  # Push rule in table
+        msg.match = of.ofp_match(dl_src=src, dl_dst=dst)
         msg.idle_timeout = idle_timeout
         msg.hard_timeout = hard_timeout
-        msg.buffer_id = packet_in.buffer_id
+        action = of.ofp_action_output(port=port)
+        msg.actions.append(action)
+        self.connection.send(msg)
+
+    def install_adaptive_flow(self, match, port, idle_timeout=30, hard_timeout=45):
+        log.debug("Installing flow...")
+        log.debug("Source MAC: " + str(match.dl_src))
+        log.debug("Destination MAC: " + str(match.dl_dst))
+        log.debug("Out port: " + str(port))
+        msg = of.ofp_flow_mod()  # Push rule in table
+        msg.match = match
+        msg.idle_timeout = idle_timeout
+        msg.hard_timeout = hard_timeout
         action = of.ofp_action_output(port=port)
         msg.actions.append(action)
         self.connection.send(msg)
