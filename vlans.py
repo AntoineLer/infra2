@@ -205,7 +205,7 @@ class Switch(EventMixin):
         If the switch if a Edge, it maintains ports that are connected to Core Switches.
 
         Args:
-            event: The port connected to a Core Switch
+            port: The port connected to a Core Switch
             coreDpid: the DPID of the Core Switch
         """
         #log.debug("Edge Switch " + str(self.dpid) + " Learns Vlan translation with core Switch " + str(coreDpid))

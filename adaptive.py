@@ -17,11 +17,17 @@ class Switch(EventMixin):
         self.isCore = None
         self.mac_to_port = {}
         self.edgeToCore = {}
-        Timer(5, self._timer_func, recurring=True)
+        Timer(3, self._timer_func, recurring=True)
         self.current_bw = {}
         self.total_bw = {}
 
     def connect(self, connection, topo):
+        """Connect the switch with the controller.
+
+        Args:
+            connection: Connection with the controller
+            topo: The topology of the network
+        """
         if self.dpid is None:
             self.dpid = connection.dpid
         assert self.dpid == connection.dpid
@@ -31,8 +37,12 @@ class Switch(EventMixin):
         self._listeners = self.listenTo(connection)
 
     def disconnect(self):
+        """Disconnect the switch with the controller.
+
+        Args: /
+        """
         if self.connection is not None:
-            log.debug("Disconnect %s" % (self.connection,))
+            #log.debug("Disconnect %s" % (self.connection,))
             self.connection.removeListeners(self._listeners)
             self.connection = None
             self._listeners = None
@@ -44,6 +54,10 @@ class Switch(EventMixin):
         Instructs the switch to resend a packet that it had sent to us.
         "packet_in" is the ofp_packet_in object the switch had sent to the
         controller due to a table-miss.
+
+        Args:
+            packet_in: the ofp_packet_in object the switch had sent
+            out_port: The port in which the packet will be sent
         """
         msg = of.ofp_packet_out()
         msg.data = packet_in
@@ -55,89 +69,103 @@ class Switch(EventMixin):
         # Send message to switch
         self.connection.send(msg)
 
+
     def act_like_switch(self, packet, packet_in):
         """
-        Implement switch-like behavior.
-        """
-        # Learn the port for the source MAC
-        log.debug("Packet in Switch s" + str(self.dpid))
+        Implement switch-like behavior with adaptive policy.
 
-        if packet.dst in self.mac_to_port:
-            log.debug("Dst " + str(packet.dst) + " known in the switch")
-            if self.isCore:
-                log.debug("Current switch is a Core")
-                self.mac_to_port[packet.src] = packet_in.in_port
-                log.debug("install flow between src <----> dst")
-                self.install_flow(
-                    packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                self.install_flow(
-                    packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
+        Args:
+            packet: Parsed packet data
+            packet_in: the ofp_packet_in object the switch had sent
+        """
+        #log.debug("Packet in Switch s" + str(self.dpid))
+
+        """if the switch is core"""
+        if self.isCore:
+
+            """keep the port corresponding to the source MAC address"""
+            self.mac_to_port[packet.src] = packet_in.in_port
+
+            """if the destination is known"""
+            if packet.dst in self.mac_to_port:
+                """resend the packet to the good port"""
+                self.resend_packet(packet_in, self.mac_to_port[packet.dst])
+                #log.debug("Installing flow...")
+                #log.debug("Source MAC: " + str(packet.src))
+                #log.debug("Destination MAC: " + str(packet.dst))
+                #log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
+
+                """install a permanent flow matching the destination of the packet with the good port"""
+                msg = of.ofp_flow_mod()
+                msg.match = of.ofp_match(dl_dst = packet.dst)
+                msg.idle_timeout = of.OFP_FLOW_PERMANENT
+                msg.hard_timeout = of.OFP_FLOW_PERMANENT
+                action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
+                msg.actions.append(action)
+                self.connection.send(msg)
             else:
-                log.debug("Current switch is a Edge")
-                if packet_in.in_port in self.edgeToCore.values():
-                    log.debug("Packet received from a Core Switch")
-                    log.debug("install flow src ----> dst")
-                    self.install_flow(
-                        packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                    log.debug("install adaptive flow")
-                    #Adaptive flow of the inverse/response flow
-                    port = min(self.current_bw, key=self.current_bw.get)
-                    dl_src = packet.dst
-                    dl_dst = packet.src
-                    match = of.ofp_match.from_packet(packet)
-                    match.dl_src = dl_src
-                    match.dl_dst = dl_dst
-                    self.install_adaptive_flow(match, port)
-                else:
-                    log.debug("Packet received from a host")
-                    self.mac_to_port[packet.src] = packet_in.in_port
-                    log.debug("install flow between src <----> dst")
-                    self.install_flow(
-                        packet.src, packet.dst, self.mac_to_port[packet.dst], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-                    self.install_flow(
-                        packet.dst, packet.src, self.mac_to_port[packet.src], idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT)
-            self.resend_packet(packet_in, self.mac_to_port[packet.dst])
-        else:
-            log.debug("dst " + str(packet.dst) + " not known in the switch")
-            if self.isCore:
-                log.debug("Current switch is a Core")
-                self.mac_to_port[packet.src] = packet_in.in_port
+                """if the destination is unknow, flood"""
                 self.resend_packet(packet_in, of.OFPP_FLOOD)
+        else:
+            """if the switch is edge,
+            keep the port corresponding to the source MAC address"""
+            self.mac_to_port[packet.src] = packet_in.in_port
+
+            """if the destination is known"""
+            if packet.dst in self.mac_to_port:
+                """resend the packet to the good port"""
+                self.resend_packet(packet_in, self.mac_to_port[packet.dst])
+                #log.debug("Installing flow...")
+                #log.debug("Source MAC: " + str(packet.src))
+                #log.debug("Destination MAC: " + str(packet.dst))
+                #log.debug("Out port: " + str(self.mac_to_port[packet.dst]) + "\n")
+
+                """install a flow with perfect match that lasts few seconds"""
+                msg = of.ofp_flow_mod() #Push rule in table
+                msg.match = of.ofp_match.from_packet(packet)
+                msg.idle_timeout = 3
+                msg.hard_timeout = 10
+                action = of.ofp_action_output(port=self.mac_to_port[packet.dst])
+                msg.actions.append(action)
+                self.connection.send(msg)
+                """remove the mac_to_port entry used to install the flow"""
+                del self.mac_to_port[packet.dst]
             else:
-                log.debug("Current switch is a Edge")
-                if packet_in.in_port in self.edgeToCore.values():
-                    log.debug("Packet received from a Core Switch")
-                    self.resend_packet(packet_in, of.OFPP_FLOOD)
-                else:
-                    log.debug("Packet received from a host")
-                    self.mac_to_port[packet.src] = packet_in.in_port
-                    self.resend_packet(packet_in, of.OFPP_FLOOD)
+                """if the destination is unknown"""
+                """flood"""
+                self.resend_packet(packet_in, of.OFPP_FLOOD)
+
+                """if the packet comes from a host"""
+                if packet_in.in_port not in self.edgeToCore.values():
+                    """send the packet to the less loaded core"""
                     port = min(self.current_bw, key=self.current_bw.get)
                     self.resend_packet(packet_in, port)
-        log.debug("End treating packet\n")
 
-    def install_flow(self, src, dst, port, idle_timeout=15, hard_timeout=30):
-        log.debug("Installing flow...")
-        log.debug("Source MAC: " + str(src))
-        log.debug("Destination MAC: " + str(dst))
-        log.debug("Out port: " + str(port))
-        msg = of.ofp_flow_mod()  # Push rule in table
-        msg.match = of.ofp_match(dl_src=src, dl_dst=dst)
+                    #log.debug("PORT MATCH LOL: " + str(port))
+                    #log.debug(self.current_bw)
+
+
+    def push_flow(self, packet, packet_in, port, idle_timeout=of.OFP_FLOW_PERMANENT, hard_timeout=of.OFP_FLOW_PERMANENT):
+        """
+        Add flow in the switch table.
+
+        Args:
+            src: The source Ethernet frame
+            dst: The destination Ethernet frame
+            idle_timeout: /
+            hard_timeout: /
+        """
+        self.resend_packet(packet_in, port)
+        #log.debug("Installing flow...")
+        #log.debug("Source MAC: " + str(packet.src))
+        #log.debug("Destination MAC: " + str(packet.dst))
+        #log.debug("Out port: " + str(port) + "\n")
+
+        msg = of.ofp_flow_mod() #Push rule in table
+        msg.match = of.ofp_match.from_packet(packet)
         msg.idle_timeout = idle_timeout
         msg.hard_timeout = hard_timeout
-        action = of.ofp_action_output(port=port)
-        msg.actions.append(action)
-        self.connection.send(msg)
-
-    def install_adaptive_flow(self, match, port, idle_timeout=30, hard_timeout=45):
-        log.debug("Installing flow...")
-        log.debug("Source MAC: " + str(match.dl_src))
-        log.debug("Destination MAC: " + str(match.dl_dst))
-        log.debug("Out port: " + str(port))
-        msg = of.ofp_flow_mod()  # Push rule in table
-        msg.match = match
-        msg.idle_timeout = idle_timeout
-        msg.hard_timeout = hard_timeout
+        msg.buffer_id = packet_in.buffer_id
         action = of.ofp_action_output(port=port)
         msg.actions.append(action)
         self.connection.send(msg)
@@ -145,6 +173,9 @@ class Switch(EventMixin):
     def _handle_PacketIn(self, event):
         """
         Handles packet in messages from the switch.
+
+        Args:
+            event: The event
         """
         packet = event.parsed  # This is the parsed packet data.
         if not packet.parsed:
@@ -155,15 +186,34 @@ class Switch(EventMixin):
         self.act_like_switch(packet, packet_in)
 
     def add_edge_to_core(self, port, coreDpid):
-        log.debug("Edge Switch " + str(self.dpid) + " Learns Vlan translation with core Switch " + str(coreDpid))
+        """
+        Maintains ports that are connections between Edge and Core.
+
+        Args:
+            port: The port connected to Switch
+            coreDpid: the DPID of the Switch
+        """
+        #log.debug("Edge Switch " + str(self.dpid) + " Learns Vlan translation with core Switch " + str(coreDpid))
         self.edgeToCore[coreDpid] = port
 
     def disable_flooding(self, port):
+        """
+        Disable flooding to a port of the switch.
+
+        Args:
+            port: The port
+        """
         msg = of.ofp_port_mod(
             port_no=port, hw_addr=self.connection.ports[port].hw_addr, config=of.OFPPC_NO_FLOOD, mask=of.OFPPC_NO_FLOOD)
         self.connection.send(msg)
 
     def enable_flooding(self, port):
+        """
+        Enable flooding to a port of the switch.
+
+        Args:
+            port: The port
+        """
         msg = of.ofp_port_mod(port_no = port,
                               hw_addr = self.connection.ports[port].hw_addr,
                               config = 0, # opposite of of.OFPPC_NO_FLOOD,
@@ -202,17 +252,25 @@ class Adaptive(object):
         self.nHost = nEdge * nHosts
         self.switches = {}
         def startup():
+            """Start events"""
             core.openflow.addListeners(self)
             core.openflow_discovery.addListeners(self)
         core.call_when_ready(startup, ('openflow', 'openflow_discovery'))
 
     def _handle_LinkEvent(self, event):
+        """
+        Handles changes or discovery between switches.
+
+        Args:
+            event: The event
+        """
         link = event.link
         switch_1 = self.switches.get(link.dpid1)
         switch_2 = self.switches.get(link.dpid2)
         port_1 = link.port1
         port_2 = link.port2
 
+        """ disable flooding between Edge and Core Switches"""
         if switch_1.isCore and not switch_2.isCore:
             switch_2.disable_flooding(port_2)
             switch_2.add_edge_to_core(port_2, switch_1.dpid)
@@ -222,9 +280,13 @@ class Adaptive(object):
 
     def _handle_ConnectionUp(self, event):
         """
-        here's a very simple POX component that listens to ConnectionUp events from all switches, and logs a message when one occurs.
+        here's a very simple POX component that listens to ConnectionUp events from all switches,
+        and create a switch object there is no existing yet.
+
+        Args:
+            event: The event
         """
-        log.debug("New Switch Connection")
+        #log.debug("New Switch Connection")
         switch = self.switches.get(event.dpid)
         if switch is None:
             # New switch
@@ -235,19 +297,30 @@ class Adaptive(object):
             switch.connect(event.connection, self.topo)
 
     def _handle_ConnectionDown(self, event):
-        log.debug("Switch Deconnection")
+        """
+        here's a very simple POX component that listens to ConnectionDown events from all switches,
+        and disconnect a switch object.
+
+        Args:
+            event: The event
+        """
+        #log.debug("Switch Deconnection")
         switch = self.switches.get(event.dpid)
         if switch is None:
-            log.debug("Should never happen please")
+            #log.debug("Should never happen please")
+            return
         else:
             switch.disconnect()
-        log.debug("switch " + dpid_to_str(event.dpid) + " down")
+        #log.debug("switch " + dpid_to_str(event.dpid) + " down")
         # Bonus here
 
     def _handle_PortStatus(self, event):
         """
         PortStatus events are raised when the controller receives an OpenFlow port-status message (ofp_port_status) from a switch,
         which indicates that ports have changed.  Thus, its .ofp attribute is an ofp_port_status.
+
+        Args:
+            event: The event
         """
         if event.added:
             action = "added"
@@ -255,7 +328,17 @@ class Adaptive(object):
             action = "removed"
         else:
             action = "modified"
-        print "Port %s on Switch %s has been %s." % (event.port, event.dpid, action)
+
+        #print "Port %s on Switch %s has been %s." % (event.port, event.dpid, action)
 
 def launch(nCore=2, nEdge=3, nHosts=3, bw=10):
+    """
+    Launch the POX Controller.
+
+    Args:
+        nCore: The number of core switch
+        nEdge: The number of edge switch
+        nHosts: The number of hosts per edge
+        bw: The bandwidth of each link
+    """
     core.registerNew(Adaptive, nCore=int(nCore), nEdge=int(nEdge), nHosts=int(nHosts), bw=int(bw))

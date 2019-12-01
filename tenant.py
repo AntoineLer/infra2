@@ -14,6 +14,7 @@ class Tenant(object):
         self.vlans_id = [i for i in range(n_vlans)]
         self.vlans = {}
 
+        """Initialisation with vlan here, it should match with the topology"""
         self.vlans[EthAddr('00:00:00:00:00:01')] = self.vlans_id[0]
         self.vlans[EthAddr('00:00:00:00:00:02')] = self.vlans_id[1]
         self.vlans[EthAddr('00:00:00:00:00:03')] = self.vlans_id[2]
@@ -30,5 +31,13 @@ class Tenant(object):
         self.vlans[EthAddr('00:00:00:00:00:0c')] = self.vlans_id[3]
 
     def getVlanTranslation(self, EthAddr):
+        """
+        returns the core DPID and the vlan ID of a ethernet Address of a host
+
+        Args:
+            EthAddr: The Ethernet MAC address of a Host
+        returns:
+            (vlan id, core DPID)
+        """
         ID = self.vlans[EthAddr]
         return (self.vlans[EthAddr], (ID % self.nCore) + 1)
